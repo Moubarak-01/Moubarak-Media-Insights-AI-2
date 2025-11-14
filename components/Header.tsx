@@ -15,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleHistory, isHistoryVisibl
             {isHistoryVisible ? <XIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
             </button>
             <div className="flex items-center gap-3">
-                <img src="./download.png" alt="Moubarak Media Insights AI Logo" className="h-8 w-8 rounded-lg" />
+                <img src="/download.png" alt="Moubarak Media Insights AI Logo" className="h-8 w-8 rounded-lg" />
                 <div>
                   <h1 className="text-xl font-bold text-slate-100 tracking-tight">
                     Moubarak Media Insights

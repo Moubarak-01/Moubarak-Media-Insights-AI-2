@@ -3,6 +3,7 @@ import { HistoryItem, GeneralChatHistoryItem, User, ChatMode } from '../types';
 import { HistoryIcon, PlusIcon, TrashIcon, ChatBubbleIcon, LogOutIcon, FileTextIcon, UserIcon } from './icons';
 import { SectionSelector } from './SectionSelector';
 
+
 interface HistorySidebarProps {
   generalChatHistory: GeneralChatHistoryItem[];
   onSelectChatSession: (session: GeneralChatHistoryItem) => void;
@@ -59,7 +60,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-700">
              <div className="flex items-center gap-3">
-                <img src="./download.png" alt="Logo" className="h-8 w-8 rounded-lg" />
+                <img src="/download.png" alt="Logo" className="h-8 w-8 rounded-lg" />
                 <div>
                   <h1 className="text-lg font-bold text-slate-100 tracking-tight">
                     AI Sections
