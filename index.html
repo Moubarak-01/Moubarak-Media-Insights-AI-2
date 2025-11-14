@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/jpeg" href="/icon.jpeg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Moubarak Media Insights AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "marked": "https://cdn.jsdelivr.net/npm/marked@13.0.0/lib/marked.esm.js",
+    "mammoth": "https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js",
+    "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs",
+    "xlsx": "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+    "heic2any": "https://esm.sh/heic2any@0.0.4",
+    "jszip": "https://esm.sh/jszip@3.10.1"
+  }
+}
+</script>
+<!-- KaTeX for math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0KOVEMeaMurHlsGGmIbTBOTfxKCgDxSTYLPNBYE_Sjgna0kAXX4h4" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGohHnVvGIlwQ" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+
+<!-- highlight.js for syntax highlighting -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" crossorigin="anonymous"></script>
+
+<script>
+  // Global helper function for the "Copy Code" button in Markdown blocks.
+  // This avoids issues with inline JS and CSP policies.
+  function handleCopyCode(button, uniqueId) {
+    const codeElement = document.getElementById(uniqueId);
+    if (!codeElement) return;
+
+    const text = codeElement.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      button.textContent = 'Copied!';
+      setTimeout(() => {
+        button.textContent = 'Copy Code';
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy code: ', err);
+      button.textContent = 'Error';
+      setTimeout(() => {
+        button.textContent = 'Copy Code';
+      }, 2000);
+    });
+  }
+</script>
+
+<style>
+  @keyframes gradient-animation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+  }
+  .animate-shimmer {
+    background: linear-gradient(to right, #334155 4%, #475569 25%, #334155 36%);
+    background-size: 2000px 100%;
+    animation: shimmer 2s infinite linear;
+  }
+  .message-enter {
+    animation: fadeIn 0.3s ease-out;
+  }
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient-animation 2.5s ease infinite;
+  }
+  /* Chat bubble styles */
+  .chat-bubble {
+      padding: 0.75rem 1rem;
+      border-radius: 1.25rem; /* More rounded */
+      max-width: 80%;
+      word-wrap: break-word;
+  }
+  .chat-bubble-user {
+      background-color: #4f46e5; /* indigo-600 */
+      color: white;
+  }
+  .chat-bubble-ai {
+      background-color: #334155; /* slate-700 */
+      color: #cbd5e1; /* slate-300 */
+  }
+  
+  .markdown-content {
+    word-break: break-word;
+  }
+  .markdown-content ul, .markdown-content ol {
+    padding-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .markdown-content ul {
+    list-style-type: disc;
+  }
+  .markdown-content ol {
+    list-style-type: decimal;
+  }
+  .markdown-content li {
+    margin-bottom: 0.25rem;
+  }
+  .markdown-content p {
+    margin-bottom: 0.75rem;
+    white-space: pre-wrap; /* Ensures single-line inputs don't wrap unnecessarily */
+    overflow-wrap: break-word; /* Force long words/strings to wrap */
+  }
+  .markdown-content p:last-child {
+    margin-bottom: 0;
+  }
+  .markdown-content strong, .markdown-content b {
+    font-weight: 600;
+    color: #e2e8f0; /* slate-200 */
+  }
+  .markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      margin-top: 1rem;
+      color: #f1f5f9; /* slate-100 */
+      border-bottom: 1px solid #334155; /* slate-700 */
+      padding-bottom: 0.25rem;
+  }
+  .markdown-content h1 { font-size: 1.5rem; }
+  .markdown-content h2 { font-size: 1.25rem; }
+  .markdown-content h3 { font-size: 1.1rem; }
+  .markdown-content a {
+    color: #facc15; /* yellow-400 */
+    text-decoration: underline;
+  }
+  .markdown-content a:hover {
+    color: #fde047; /* yellow-300 */
+  }
+  /* KaTeX font color adjustments */
+  .katex {
+    color: #e2e8f0; /* slate-200 */
+  }
+  /* Textarea styling from user prompt */
+  .chat-textarea {
+    width: 100%;
+    min-height: 2.5em; /* Adjusted to match original feel */
+    max-height: 10em;
+    line-height: 1.5;
+    resize: vertical;
+    overflow-y: auto;
+    word-wrap: break-word;
+  }
+
+  /* --- Styles for Custom Code Blocks --- */
+  .code-block-wrapper {
+    position: relative;
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background-color: #282c34; /* Match atom-one-dark theme */
+    border: 1px solid #334155;
+  }
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background-color: #334155;
+    color: #94a3b8;
+    font-size: 0.8em;
+    font-family: monospace;
+  }
+  .code-lang {
+    text-transform: uppercase;
+    font-weight: bold;
+  }
+  .copy-code-btn {
+    background-color: #475569;
+    color: #e2e8f0;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s;
+  }
+  .copy-code-btn:hover {
+    background-color: #64748b;
+  }
+  .copy-code-btn:active {
+    transform: scale(0.95);
+  }
+  .code-block-wrapper pre {
+    margin: 0 !important;
+    padding: 0.75rem !important;
+    background-color: transparent !important;
+    white-space: pre-wrap; /* Ensure code wraps */
+    overflow-wrap: break-word; /* Break long lines in code */
+  }
+  .markdown-content code {
+    color: #abb2bf;
+    background-color: #282c34;
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    border-radius: 6px;
+    font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  .markdown-content pre code {
+    background-color: transparent !important;
+    padding: 0 !important;
+    font-size: 1em !important;
+  }
+  .markdown-content.force-no-wrap p {
+    display: inline-block;
+  }
+
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-900 text-white">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

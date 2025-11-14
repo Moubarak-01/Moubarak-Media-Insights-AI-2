@@ -1,0 +1,7 @@
+{
+  "name": "Moubarak Media Insights AI Edition",
+  "description": "An AI-powered web app that lets users upload or record media, transcribes it, summarizes it, and allows them to ask questions about the summary.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
