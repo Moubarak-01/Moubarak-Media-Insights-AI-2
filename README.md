@@ -61,8 +61,7 @@ Follow these instructions to set up and run the project on your local machine.
 
 1.  **Clone the repository (or download the source files):**
     ```bash
-    git clone https://github.com/your-repo/moubarak-media-insights-ai.git
-    cd moubarak-media-insights-ai
+    git clone https://github.com/Moubarak-01/Moubarak-Media-Insights-AI-2.git
     ```
 
 2.  **Install dependencies:**
@@ -84,7 +83,7 @@ The application requires a Google Gemini API key to function.
 3.  **Add your API key to the file**:
     - Open `.env.local` and add your key like this:
     ```
-    VITE_GEMINI_API_KEY=YOUR_API_KEY_HERE
+    GEMINI_API_KEY=YOUR_API_KEY_HERE
     ```
     > **Note**: Vite requires environment variables exposed to the client to be prefixed with `VITE_`. The application code expects `process.env.API_KEY`, which Vite will handle correctly.
 
