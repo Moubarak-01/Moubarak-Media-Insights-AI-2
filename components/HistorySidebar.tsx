@@ -59,7 +59,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-700">
              <div className="flex items-center gap-3">
-                <img src="/download.png" alt="Logo" className="h-8 w-8 rounded-lg" />
+                <img src="./download.png" alt="Logo" className="h-8 w-8 rounded-lg" />
                 <div>
                   <h1 className="text-lg font-bold text-slate-100 tracking-tight">
                     AI Sections
