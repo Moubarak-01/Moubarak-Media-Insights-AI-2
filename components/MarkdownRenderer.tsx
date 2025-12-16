@@ -57,6 +57,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({ content
         components={{
           // Override the code component to support highlighting and copy button
           code: CodeBlock,
+          // Custom mapping for bold text to match the "key variables" styling requirement
+          strong: ({ node, ...props }) => (
+            <strong {...props} className="text-yellow-400 font-bold" />
+          ),
           // Override links to open in new tab
           a: ({ node, ...props }) => (
             <a 

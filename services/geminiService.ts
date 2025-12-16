@@ -50,6 +50,81 @@ const truncateText = (text: string, limit: number) => {
     return text.slice(0, limit) + "\n... (transcript truncated for brevity) ...";
 };
 
+// --- UNIVERSAL CONTENT CLEANER ---
+
+/**
+ * Filters out model-specific artifacts (Thinking tags, Citations) to ensure clean data.
+ * @param text The raw text chunk or full string from the AI.
+ * @returns The cleaned string ready for display.
+ */
+function cleanAIText(text: string): string {
+    if (!text) return '';
+
+    // 1. Remove <think>...</think> blocks (handling newlines)
+    // Note: In a full stream implementation, this requires state, handled by processStreamChunk below.
+    let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+
+    // 2. Remove Citations/Footnotes like [1], [5], [1, 2]
+    // Regex explanation: \[ matches [, \d+ matches digits, (?:,\s*\d+)* matches optional comma+digits, \] matches ]
+    cleaned = cleaned.replace(/\[\d+(?:,\s*\d+)*\]/g, '');
+
+    return cleaned;
+}
+
+/**
+ * Helper class to manage streaming state for cleaning (e.g., handling split <think> tags).
+ */
+class StreamCleaner {
+    private inThinkBlock = false;
+    private buffer = '';
+
+    process(chunk: string): string {
+        this.buffer += chunk;
+        let output = '';
+
+        // If we are stuck in a think block, look for the closer
+        if (this.inThinkBlock) {
+            const endTagIndex = this.buffer.indexOf('</think>');
+            if (endTagIndex !== -1) {
+                this.inThinkBlock = false;
+                // Discard the think block, keep the rest
+                this.buffer = this.buffer.substring(endTagIndex + 8); // 8 is length of </think>
+            } else {
+                // Still in think block, output nothing, keep buffering to find the end
+                return '';
+            }
+        }
+
+        // Check for new think block start
+        const startTagIndex = this.buffer.indexOf('<think>');
+        if (startTagIndex !== -1) {
+            // Output everything before the tag
+            output += this.buffer.substring(0, startTagIndex);
+            
+            // Check if it closes in the same chunk
+            const endTagIndex = this.buffer.indexOf('</think>', startTagIndex);
+            if (endTagIndex !== -1) {
+                // It opened and closed. Discard the middle.
+                this.buffer = this.buffer.substring(endTagIndex + 8);
+                // Recursively process the rest of the buffer in case there are more tags
+                return output + this.process(''); 
+            } else {
+                // It opened but didn't close. Enter think mode.
+                this.inThinkBlock = true;
+                this.buffer = ''; // Buffer consumed (discarded)
+                return output; 
+            }
+        }
+
+        // No think tags? Just output the buffer and clear it
+        // We run standard cleaning (citations) on the output
+        output += this.buffer;
+        this.buffer = ''; 
+        return cleanAIText(output);
+    }
+}
+
+
 // Helper to safely extract text from a chunk, handling the "chunk.text is not a function" error.
 const safeGetText = (chunk: any): string => {
     try {
@@ -112,7 +187,7 @@ const callPerplexityFallback = async (
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'sonar-reasoning-pro', // UPDATED: Using the pro model as requested
+            model: 'sonar-reasoning-pro', // Using the reasoning model as requested
             messages: messages,
             stream: true
         })
@@ -128,6 +203,9 @@ const callPerplexityFallback = async (
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
+    
+    // Instantiate cleaner for this stream
+    const cleaner = new StreamCleaner();
 
     while (true) {
         if (isCancelledRef.current) {
@@ -155,7 +233,10 @@ const callPerplexityFallback = async (
                 const json = JSON.parse(dataStr);
                 const content = json.choices?.[0]?.delta?.content;
                 if (content) {
-                    onChunk(content);
+                    const cleanContent = cleaner.process(content);
+                    if (cleanContent) {
+                        onChunk(cleanContent);
+                    }
                 }
             } catch (e) {
                 console.warn("Failed to parse Perplexity chunk", e);
@@ -244,10 +325,16 @@ export const generateChatStream = async (
                 config,
             });
 
+            // Instantiate cleaner for this stream
+            const cleaner = new StreamCleaner();
+
             for await (const chunk of stream) {
                 if (isCancelledRef.current) break;
                 const text = safeGetText(chunk);
-                if (text) onChunk(text, chunk); // Passing both text and original chunk
+                if (text) {
+                    const cleanText = cleaner.process(text);
+                    if (cleanText) onChunk(cleanText, chunk); 
+                }
             }
             return; // Success!
 
@@ -331,11 +418,14 @@ export const summarizeFileStream = async (
             contents: [{ role: 'user', parts: [filePart, textPart] }],
         });
 
+        const cleaner = new StreamCleaner();
+
         for await (const chunk of stream) {
             if (isCancelledRef.current) break;
             const text = safeGetText(chunk);
             if (text) {
-                onChunk(text);
+                const cleanText = cleaner.process(text);
+                if (cleanText) onChunk(cleanText);
             }
         }
     } catch (error) {
@@ -511,17 +601,20 @@ export const streamChatResponse = async (
             },
         });
 
+        const cleaner = new StreamCleaner();
+
         for await (const chunk of stream) {
             const token = safeGetText(chunk);
             if (token) {
-                // 2. Use the provided onToken callback
-                onToken(token);
-                // 3. Collect all chunks
-                finalResponse += token;
+                const cleanToken = cleaner.process(token);
+                if (cleanToken) {
+                    onToken(cleanToken);
+                    finalResponse += cleanToken;
+                }
             }
         }
         
-        return finalResponse; // 3. Return the final, complete response string
+        return finalResponse; 
     } catch (error) {
         console.error("Streaming chat response failed:", error);
         throw new Error(`Failed to get response from AI. Details: ${error instanceof Error ? error.message : String(error)}`);
