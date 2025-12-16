@@ -8,7 +8,7 @@ import JSZip, { JSZipObject } from 'jszip';
 import * as mammoth from 'mammoth';
 
 import { ChatMessage, GeneralChatHistoryItem, MessagePart, FilePreviewPart, TextPart, InlineDataPart, ChatMode, TtsVoiceState, Language } from '../types';
-import { SendIcon, BotIcon, PlusIcon, XIcon, StopCircleIcon, MicIcon, FileTextIcon, ImageIcon, VideoIcon, SpinnerIcon, PresentationIcon, ArchiveIcon, EyeIcon, BrainCircuitIcon, StopIcon, CodeIcon } from './icons';
+import { SendIcon, BotIcon, PlusIcon, XIcon, StopCircleIcon, MicIcon, FileTextIcon, ImageIcon, VideoIcon, SpinnerIcon, PresentationIcon, ArchiveIcon, EyeIcon, BrainCircuitIcon, StopIcon, CodeIcon, CopyIcon, CheckIcon } from './icons';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import { AiLoadingIndicator } from './AiLoadingIndicator';
@@ -371,6 +371,7 @@ export const GeneralChat: React.FC<GeneralChatProps> = ({ chatSession, onSave, t
   const [mode, setMode] = useState<'text' | 'image' | 'video' | 'search'>('text');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [copiedMessageTimestamp, setCopiedMessageTimestamp] = useState<string | null>(null);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -414,10 +415,9 @@ export const GeneralChat: React.FC<GeneralChatProps> = ({ chatSession, onSave, t
   }, [chatSession]);
 
   useEffect(() => {
-    // This effect handles auto-scrolling during AI response streaming.
-    // It only scrolls if the user hasn't manually scrolled up.
-    if (!userScrolledUpRef.current) {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // FIX: Replaced scrollIntoView with direct scrollTop assignment to prevent whole-page scrolling
+    if (!userScrolledUpRef.current && chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
@@ -499,6 +499,20 @@ export const GeneralChat: React.FC<GeneralChatProps> = ({ chatSession, onSave, t
     setIsLoading(false);
     setProcessingStatus(null);
   }
+
+  const handleCopyMessage = (msg: ChatMessage) => {
+    const textContent = msg.parts
+        .filter(p => 'text' in p)
+        .map(p => (p as TextPart).text)
+        .join('\n');
+        
+    if (!textContent) return;
+
+    navigator.clipboard.writeText(textContent).then(() => {
+        setCopiedMessageTimestamp(msg.timestamp);
+        setTimeout(() => setCopiedMessageTimestamp(null), 2000);
+    });
+  };
   
   const handleGenerateImage = async () => {
     if (!input.trim() || isLoading) return;
@@ -1048,58 +1062,69 @@ export const GeneralChat: React.FC<GeneralChatProps> = ({ chatSession, onSave, t
                   const sortedParts = [...msg.parts].sort((a, b) => ('text' in a ? 1 : -1));
 
                   return (
-                      <div key={index} className="flex justify-end message-enter">
-                          <div className="flex flex-col items-end max-w-[85%]">
-                              <div className="chat-bubble chat-bubble-user flex flex-col gap-3">
-                                  {sortedParts.map((part, pIndex) => {
-                                      if ('text' in part) {
-                                          const wordCount = part.text.trim().split(/\s+/).filter(Boolean).length;
-                                          const hasNewlines = part.text.includes('\n');
-                                          const customClassName = wordCount <= 10 && !hasNewlines ? 'force-no-wrap' : '';
-                                          return <MarkdownRenderer key={pIndex} content={part.text} className={customClassName} />;
-                                      }
-                                      if ('inlineData' in part) {
-                                          const src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                                          if (part.inlineData.mimeType.startsWith('image/')) return <img key={pIndex} src={src} alt="user upload" className="max-w-xs rounded-lg" />;
-                                          if (part.inlineData.mimeType.startsWith('video/')) return <video key={pIndex} src={src} controls className="max-w-xs rounded-lg" />;
-                                          if (part.inlineData.mimeType.startsWith('audio/')) return <audio key={pIndex} src={src} controls className="w-full" />;
-                                      }
-                                      if ('filePreview' in part) {
-                                          const hasFullText = !!part.filePreview.fullText && part.filePreview.fullText.startsWith('Error:') === false;
-                                          const FileIcon = part.filePreview.type === 'archive' ? ArchiveIcon : FileTextIcon;
-                                          return (
-                                              <div key={pIndex} className="bg-indigo-500 p-3 rounded-lg flex flex-col gap-2">
-                                                  <div className="flex items-center gap-3">
-                                                    <FileIcon className="w-6 h-6 text-indigo-100 flex-shrink-0" />
-                                                    <span className="font-semibold text-sm text-white truncate flex-1">{part.filePreview.name}</span>
-                                                    {hasFullText && (
-                                                        <button 
-                                                          onClick={() => setModalContent({ title: part.filePreview.name, content: part.filePreview.fullText! })}
-                                                          className="p-1 rounded-full text-indigo-100 hover:bg-indigo-400 hover:text-white transition-colors"
-                                                          title="View extracted content"
-                                                        >
-                                                            <EyeIcon className="w-5 h-5" />
-                                                        </button>
-                                                    )}
+                      <div key={index} className="flex justify-end message-enter group">
+                          <div className="flex items-end gap-2 max-w-[85%] justify-end">
+                              <button
+                                  onClick={() => handleCopyMessage(msg)}
+                                  className="p-2 mb-2 rounded-full bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all focus:opacity-100"
+                                  title="Copy prompt"
+                              >
+                                  {copiedMessageTimestamp === msg.timestamp ? <CheckIcon className="w-4 h-4 text-green-400" /> : <CopyIcon className="w-4 h-4" />}
+                              </button>
+                              
+                              {/* ADDED w-fit HERE */}
+                              <div className="flex flex-col items-end w-fit">
+                                  <div className="chat-bubble chat-bubble-user flex flex-col gap-3">
+                                      {sortedParts.map((part, pIndex) => {
+                                          if ('text' in part) {
+                                              const wordCount = part.text.trim().split(/\s+/).filter(Boolean).length;
+                                              const hasNewlines = part.text.includes('\n');
+                                              const customClassName = wordCount <= 10 && !hasNewlines ? 'force-no-wrap' : '';
+                                              return <MarkdownRenderer key={pIndex} content={part.text} className={customClassName} />;
+                                          }
+                                          if ('inlineData' in part) {
+                                              const src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                                              if (part.inlineData.mimeType.startsWith('image/')) return <img key={pIndex} src={src} alt="user upload" className="max-w-xs rounded-lg" />;
+                                              if (part.inlineData.mimeType.startsWith('video/')) return <video key={pIndex} src={src} controls className="max-w-xs rounded-lg" />;
+                                              if (part.inlineData.mimeType.startsWith('audio/')) return <audio key={pIndex} src={src} controls className="w-full" />;
+                                          }
+                                          if ('filePreview' in part) {
+                                              const hasFullText = !!part.filePreview.fullText && part.filePreview.fullText.startsWith('Error:') === false;
+                                              const FileIcon = part.filePreview.type === 'archive' ? ArchiveIcon : FileTextIcon;
+                                              return (
+                                                  <div key={pIndex} className="bg-indigo-500 p-3 rounded-lg flex flex-col gap-2">
+                                                      <div className="flex items-center gap-3">
+                                                        <FileIcon className="w-6 h-6 text-indigo-100 flex-shrink-0" />
+                                                        <span className="font-semibold text-sm text-white truncate flex-1">{part.filePreview.name}</span>
+                                                        {hasFullText && (
+                                                            <button 
+                                                              onClick={() => setModalContent({ title: part.filePreview.name, content: part.filePreview.fullText! })}
+                                                              className="p-1 rounded-full text-indigo-100 hover:bg-indigo-400 hover:text-white transition-colors"
+                                                              title="View extracted content"
+                                                            >
+                                                                <EyeIcon className="w-5 h-5" />
+                                                            </button>
+                                                        )}
+                                                      </div>
+                                                      {part.filePreview.type !== 'archive' && hasFullText && (
+                                                        <div className="mt-2">
+                                                            <button 
+                                                                onClick={() => handleSummarizeFile(part as FilePreviewPart)}
+                                                                disabled={isLoading}
+                                                                className="w-full text-center bg-indigo-400/80 hover:bg-indigo-400 text-white text-xs font-bold py-1.5 px-2 rounded-md transition-colors disabled:opacity-50"
+                                                            >
+                                                                Summarize
+                                                            </button>
+                                                        </div>
+                                                      )}
                                                   </div>
-                                                  {part.filePreview.type !== 'archive' && hasFullText && (
-                                                    <div className="mt-2">
-                                                        <button 
-                                                            onClick={() => handleSummarizeFile(part as FilePreviewPart)}
-                                                            disabled={isLoading}
-                                                            className="w-full text-center bg-indigo-400/80 hover:bg-indigo-400 text-white text-xs font-bold py-1.5 px-2 rounded-md transition-colors disabled:opacity-50"
-                                                        >
-                                                            Summarize
-                                                        </button>
-                                                    </div>
-                                                  )}
-                                              </div>
-                                          );
-                                      }
-                                      return null;
-                                  })}
+                                              );
+                                          }
+                                          return null;
+                                      })}
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-1 px-2">{formatTime(msg.timestamp)}</div>
                               </div>
-                              <div className="text-xs text-slate-500 mt-1 px-2">{formatTime(msg.timestamp)}</div>
                           </div>
                       </div>
                   );
