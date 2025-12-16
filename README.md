@@ -32,7 +32,7 @@ The application features a multi-section architecture, allowing users to switch 
 
 ## 🔧 Recent Updates & Engineering Challenges
 
-We recently overhauled the core rendering engine and UI stability to support advanced mathematical discourse and smoother interactions.
+We recently overhauled the core rendering engine, UI stability, and backend resilience to support advanced mathematical discourse and uninterrupted service.
 
 ### 1. Advanced Math Rendering (The "Flashing" Fix)
 * **The Challenge**: Initially, using `marked` with a manual `KaTeX` render pass caused math formulas to "flash" between raw LaTeX (`$$...$$`) and rendered output during real-time streaming. The renderer couldn't keep up with the token stream, leading to visual artifacts.
@@ -51,10 +51,16 @@ We recently overhauled the core rendering engine and UI stability to support adv
 * **New Feature**: Added a "Copy Prompt" button next to user messages.
 * **Layout Fix**: Solved a spacing issue where the copy button floated too far from short messages by optimizing the message container width (`w-fit` instead of `w-full`).
 
+### 5. Multi-Provider Resilience (Perplexity Fallback)
+* **The Feature**: To ensure high availability, we implemented a robust waterfall fallback system.
+* **The Logic**: If the primary Google Gemini models (`gemini-2.5-flash`, `gemma-3`, etc.) are rate-limited, overloaded, or fail, the system automatically and seamlessly switches to the **Perplexity API** (using the `sonar` model) to generate the response, maintaining the same strict formatting rules.
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: [React](https://reactjs.org/) 19, [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
-- **AI Backend**: [Google Gemini API](https://ai.google.dev/) (`@google/genai`)
+- **AI Backend**: 
+  - [Google Gemini API](https://ai.google.dev/) (`@google/genai`) - *Primary Provider*
+  - [Perplexity API](https://docs.perplexity.ai/) - *Fallback Provider*
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 - **Client-Side File Processing**:
   - **PDF**: `pdfjs-dist`
@@ -91,20 +97,22 @@ Follow these instructions to set up and run the project on your local machine.
 
 ### Environment Variables
 
-The application requires a Google Gemini API key to function.
+The application requires API keys to function.
 
-1.  **Get an API Key**:
-    - Visit the [Google AI Studio](https://aistudio.google.com/app/apikey) to generate your free API key.
+1.  **Get your API Keys**:
+    - **Google Gemini**: Visit [Google AI Studio](https://aistudio.google.com/app/apikey).
+    - **Perplexity AI** (Optional, for backup): Visit [Perplexity API Settings](https://www.perplexity.ai/settings/api).
 
 2.  **Create an environment file**:
     - In the root of the project, create a file named `.env.local`.
 
-3.  **Add your API key to the file**:
-    - Open `.env.local` and add your key like this:
+3.  **Add your API keys to the file**:
+    - Open `.env.local` and add your keys like this:
+    ```env
+    GEMINI_API_KEY=YOUR_GEMINI_KEY_HERE
+    PERPLEXITY_API_KEY=YOUR_PERPLEXITY_KEY_HERE
     ```
-    GEMINI_API_KEY=YOUR_API_KEY_HERE
-    ```
-    > **Note**: Vite requires environment variables exposed to the client to be prefixed with `VITE_`. The application code expects `process.env.API_KEY`, which Vite will handle correctly.
+    > **Note**: Vite requires environment variables exposed to the client to be prefixed with `VITE_`. The application code expects `process.env.API_KEY`, which Vite will handle correctly via the config.
 
 ### Running the Application
 
