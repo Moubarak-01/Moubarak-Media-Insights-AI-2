@@ -1,4 +1,3 @@
-
 # Moubarak Media Insights - AI Edition
 
 ## 📖 Overview
@@ -31,6 +30,27 @@ The application features a multi-section architecture, allowing users to switch 
   - **Persistent History**: Chat history is saved per-section to `localStorage`, tied to the user's email.
   - **Responsive Design**: A fluid layout that works beautifully on both desktop and mobile devices.
 
+## 🔧 Recent Updates & Engineering Challenges
+
+We recently overhauled the core rendering engine and UI stability to support advanced mathematical discourse and smoother interactions.
+
+### 1. Advanced Math Rendering (The "Flashing" Fix)
+* **The Challenge**: Initially, using `marked` with a manual `KaTeX` render pass caused math formulas to "flash" between raw LaTeX (`$$...$$`) and rendered output during real-time streaming. The renderer couldn't keep up with the token stream, leading to visual artifacts.
+* **The Solution**: We migrated the entire markdown engine to **`react-markdown`** with `remark-math` and `rehype-katex`. This processes math *during* the parse phase rather than after, ensuring equations render instantly and stay stable, even while the AI is still typing.
+
+### 2. Viewport & Scroll Stabilization
+* **The Challenge**: As chat history grew, the entire page body would scroll, pushing the header off-screen. Additionally, the auto-scroll logic (`scrollIntoView`) was too aggressive, causing the whole browser window to jitter during generation.
+* **The Solution**: 
+    * Locked the main application container to `h-screen overflow-hidden` to prevent body scroll.
+    * Replaced `scrollIntoView` with direct DOM manipulation (`scrollTop = scrollHeight`) to constrain scrolling strictly to the chat bubble container.
+
+### 3. Strict LaTeX Enforcement
+* **The Update**: Implemented a "Strict Math" system prompt layer that forces the AI models to adhere to standard `$$` block and `$` inline syntax, ensuring flawless compatibility with our new rendering engine.
+
+### 4. UI Refinements
+* **New Feature**: Added a "Copy Prompt" button next to user messages.
+* **Layout Fix**: Solved a spacing issue where the copy button floated too far from short messages by optimizing the message container width (`w-fit` instead of `w-full`).
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: [React](https://reactjs.org/) 19, [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
@@ -42,9 +62,9 @@ The application features a multi-section architecture, allowing users to switch 
   - **XLSX**: `xlsx`
   - **HEIC**: `heic2any`
 - **Markdown & Syntax Highlighting**:
-  - `marked` for Markdown parsing.
-  - `KaTeX` for LaTeX math rendering.
-  - `highlight.js` for code block syntax highlighting.
+  - `react-markdown` & `remark-math` for parsing.
+  - `rehype-katex` & `KaTeX` for math rendering.
+  - `rehype-highlight` for code block syntax highlighting.
 - **State Management**: React Hooks (`useState`, `useEffect`, `useRef`, `useCallback`)
 - **Storage**: Browser `localStorage` for user data and chat history.
 
@@ -61,11 +81,10 @@ Follow these instructions to set up and run the project on your local machine.
 
 1.  **Clone the repository (or download the source files):**
     ```bash
-    git clone https://github.com/Moubarak-01/Moubarak-Media-Insights-AI-2.git
+    git clone [https://github.com/Moubarak-01/Moubarak-Media-Insights-AI-2.git](https://github.com/Moubarak-01/Moubarak-Media-Insights-AI-2.git)
     ```
 
 2.  **Install dependencies:**
-    This project uses standard web technologies and leverages a CDN for its dependencies (as seen in `index.html`), so a traditional `npm install` is not required for the library dependencies. However, if you were to manage them with a `package.json`, you would run:
     ```bash
     npm install
     ```
@@ -93,7 +112,6 @@ The application requires a Google Gemini API key to function.
     ```bash
     npm run dev
     ```
-    (Assuming you have a `package.json` with a `dev` script like `"dev": "vite"`)
 
 2.  **Open in your browser:**
     - Navigate to the URL provided by Vite (usually `http://localhost:5173`).
@@ -103,23 +121,20 @@ The application requires a Google Gemini API key to function.
 To create a production-ready build of the app:
 ```bash
 npm run build
-```
-This will generate a `dist` folder with optimized and minified static assets that can be deployed to any web hosting service.
+This will generate a dist folder with optimized and minified static assets that can be deployed to any web hosting service.
 
-## 📁 Project Structure
-
-```
+📁 Project Structure
 /
 ├── components/         # Reusable React components
-│   ├── GeneralChat.tsx     # Main chat interface
+│   ├── GeneralChat.tsx     # Main chat interface with strict math & streaming
+│   ├── MarkdownRenderer.tsx # New robust markdown & math engine
 │   ├── HistorySidebar.tsx  # Sidebar for chat history and section navigation
 │   ├── AuthScreen.tsx      # Login/Signup component
 │   └── ...               # Other UI components
 ├── hooks/              # Custom React hooks (e.g., useAudioRecorder)
 ├── services/           # API interaction logic (geminiService.ts)
-├── prompts.ts          # Contains all system prompts for the AI personas
+├── prompts.ts          # Contains strict system prompts for AI personas
 ├── types.ts            # TypeScript type definitions for the application
 ├── App.tsx             # Main application component and state management
 ├── index.html          # HTML entry point
 └── README.md           # You are here!
-```
