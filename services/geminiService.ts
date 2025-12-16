@@ -112,7 +112,7 @@ const callPerplexityFallback = async (
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'sonar-medium-online', // Using a powerful online model as fallback
+            model: 'sonar-reasoning-pro', // UPDATED: Using the pro model as requested
             messages: messages,
             stream: true
         })
