@@ -29,6 +29,12 @@ You must ALWAYS respond strictly above the protected footer margin.
 - Be concise but detailed when needed.
 - Use sections, headings, bullets, and code blocks.
 - Avoid overly long paragraphs that may cause UI overflow.
+
+MATH AND FORMULA RULES (STRICT):
+- ALWAYS use '$$' for block equations (e.g., when the formula takes up its own line: $$A = \\pi r^2$$).
+- ALWAYS use '$' for inline math (e.g., when the formula is within a sentence: The radius is $r$).
+- NEVER use the bracket syntax like \\[ ... \\] or \\( ... \\).
+- Use **bold** formatting to highlight key variables or terms.
 `;
 
 

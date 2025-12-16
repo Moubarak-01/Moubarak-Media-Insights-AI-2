@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, File as GeminiFile, Part as GeminiPart } from '@google/genai';
+import { GoogleGenAI, File as GeminiFile, Part as GeminiPart, GenerateContentResponse } from '@google/genai';
 import heic2any from 'heic2any';
 import * as pdfjsLib from 'pdfjs-dist';
 import * as XLSX from 'xlsx';
@@ -831,12 +831,14 @@ export const GeneralChat: React.FC<GeneralChatProps> = ({ chatSession, onSave, t
       let finalAnswer = '';
       const groundingSources = new Map<string, { title: string }>();
 
+      // FIXED: Updated onChunk signature to (text, rawChunk)
       await generateChatStream(ai, apiParts as (TextPart | InlineDataPart)[], messages, systemPrompts[activeMode], {
-        onChunk: (chunk) => {
+        onChunk: (text, chunk) => {
             if (isCancelledRef.current) return;
-            finalAnswer += chunk.text;
+            // FIXED: Use 'text' directly instead of 'chunk.text' (which is undefined on string 'chunk')
+            finalAnswer += text;
 
-            if (isSearchMode) {
+            if (isSearchMode && chunk) {
               const newChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
               if (newChunks) {
                 newChunks.forEach((c: any) => {

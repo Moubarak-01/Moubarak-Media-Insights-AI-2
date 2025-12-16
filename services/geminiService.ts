@@ -4,13 +4,43 @@ import React from 'react';
 import { GoogleGenAI, Part, File as GeminiFile, Modality, GenerateContentResponse, Tool } from '@google/genai';
 import { Language, ChatMessage, TextPart, InlineDataPart } from '../types';
 
+// New system instruction constant for the specific streaming utility function
+const STRICT_LATEX_SYSTEM_INSTRUCTION = `
+You are an expert technical assistant. You must adhere to the following rules when generating content:
+
+MATH AND FORMULA RULES (STRICT):
+- ALWAYS use '$$' for block equations (e.g., when the formula takes up its own line: $$A = \\pi r^2$$).
+- ALWAYS use '$' for inline math (e.g., when the formula is within a sentence: The radius is $r$).
+- NEVER use the bracket syntax like \\[ ... \\] or \\( ... \\).
+- Use **bold** formatting to highlight key variables or terms.
+`;
+
 interface StreamHandlers {
-  onChunk: (chunk: GenerateContentResponse) => void;
+  // CHANGED: Now accepts the extracted text as the first argument, and the raw chunk second.
+  onChunk: (text: string, chunk?: GenerateContentResponse) => void;
   isCancelledRef: React.MutableRefObject<boolean>;
 }
 
+// --- CONFIGURATION ---
+
+// 1. Expanded Google Fallback Models
+// Includes all text-out models, plus experimental audio models as requested.
+const GEMINI_FALLBACK_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-robotics-er-1.5-preview',
+  // Gemma 3 Models (using 'it' for instruct/chat optimized versions where applicable)
+  'gemma-3-27b-it',
+  'gemma-3-12b-it',
+  'gemma-3-4b-it',
+  'gemma-3-2b-it',
+  'gemma-3-1b-it',
+  // Audio/Multimodal Models (Added per request; may fail if model does not support text-to-text, handled by try-catch)
+  'gemini-2.5-flash-tts',
+  'gemini-2.5-flash-native-audio-dialog'
+];
+
 // A safe character limit for transcripts to avoid exceeding the context window.
-// Gemini 2.5 Flash has a large context, but this prevents errors with exceptionally large files.
 const TRANSCRIPT_CHAR_LIMIT = 750_000;
 
 const truncateText = (text: string, limit: number) => {
@@ -18,6 +48,20 @@ const truncateText = (text: string, limit: number) => {
         return text;
     }
     return text.slice(0, limit) + "\n... (transcript truncated for brevity) ...";
+};
+
+// Helper to safely extract text from a chunk, handling the "chunk.text is not a function" error.
+const safeGetText = (chunk: any): string => {
+    try {
+        if (typeof chunk.text === 'function') {
+            return chunk.text();
+        }
+        // Fallback for plain objects or different SDK response structures
+        return chunk.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch (e) {
+        console.warn("Failed to extract text from chunk:", e);
+        return '';
+    }
 };
 
 // Helper for retrying API calls with exponential backoff to handle rate limiting.
@@ -46,6 +90,78 @@ const withRetry = async <T>(apiCall: () => Promise<T>, maxRetries = 3, initialDe
     }
     // This line should not be reachable if maxRetries > 0, but is a fallback.
     throw new Error('Max retries reached for API call.');
+};
+
+// --- PERPLEXITY FALLBACK HANDLER ---
+const callPerplexityFallback = async (
+    messages: { role: string; content: string }[],
+    onChunk: (text: string) => void,
+    isCancelledRef: React.MutableRefObject<boolean>
+) => {
+    console.log("Switching to Perplexity API fallback...");
+    
+    // Ensure the application has the necessary key
+    if (!process.env.PERPLEXITY_API_KEY) {
+        throw new Error("Perplexity API Key is missing. Please add PERPLEXITY_API_KEY to your .env.local file.");
+    }
+
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'sonar-medium-online', // Using a powerful online model as fallback
+            messages: messages,
+            stream: true
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Perplexity API Error: ${response.status} - ${errorText}`);
+    }
+
+    if (!response.body) throw new Error("Perplexity response body is empty.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+        if (isCancelledRef.current) {
+            reader.cancel();
+            break;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Parse SSE (Server-Sent Events)
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+            
+            const dataStr = trimmed.slice(6);
+            if (dataStr === "[DONE]") return;
+
+            try {
+                const json = JSON.parse(dataStr);
+                const content = json.choices?.[0]?.delta?.content;
+                if (content) {
+                    onChunk(content);
+                }
+            } catch (e) {
+                console.warn("Failed to parse Perplexity chunk", e);
+            }
+        }
+    }
 };
 
 
@@ -89,44 +205,83 @@ export const generateChatStream = async (
     { onChunk, isCancelledRef }: StreamHandlers,
     tools?: Tool[]
 ): Promise<void> => {
-     try {
-        const historyForModel = history.reduce((acc, msg) => {
-          const apiPartsForThisTurn = msg.parts.flatMap((part): (TextPart | InlineDataPart)[] => {
-              if ('text' in part) return [{ text: part.text }];
-              // The new File API flow sends URIs, not inline data, so we only need to preserve text from history.
-              // If inlineData is present from older messages or image generation, keep it.
-              if ('inlineData' in part) return [{ inlineData: part.inlineData }];
-              return [];
-          });
-
-          if (apiPartsForThisTurn.length > 0) {
-              acc.push({
-                  role: msg.role === 'ai' ? 'model' : 'user',
-                  parts: apiPartsForThisTurn
-              });
-          }
-          return acc;
-      }, [] as { role: string; parts: (TextPart | InlineDataPart)[] }[]);
-
-        const config: any = { systemInstruction };
-        if (tools) {
-            config.tools = tools;
-        }
-
-        const stream = await ai.models.generateContentStream({
-            model: 'gemini-2.5-flash',
-            contents: [...historyForModel, { role: 'user', parts: prompt }],
-            config,
+    
+    // Prepare history once for Gemini
+    const historyForModel = history.reduce((acc, msg) => {
+        const apiPartsForThisTurn = msg.parts.flatMap((part): (TextPart | InlineDataPart)[] => {
+            if ('text' in part) return [{ text: part.text }];
+            if ('inlineData' in part) return [{ inlineData: part.inlineData }];
+            return [];
         });
 
-        for await (const chunk of stream) {
-            if (isCancelledRef.current) break;
-            onChunk(chunk);
+        if (apiPartsForThisTurn.length > 0) {
+            acc.push({
+                role: msg.role === 'ai' ? 'model' : 'user',
+                parts: apiPartsForThisTurn
+            });
         }
-    } catch (error) {
-        console.error("Chat generation failed:", error);
-        throw new Error(`Failed to get response from AI. Details: ${error instanceof Error ? error.message : String(error)}`);
+        return acc;
+    }, [] as { role: string; parts: (TextPart | InlineDataPart)[] }[]);
+
+    const config: any = { systemInstruction };
+    if (tools) {
+        config.tools = tools;
     }
+
+    // 2. Waterfall Fallback Logic
+    let lastError: any = null;
+
+    // A. Try Google Models first (using all specified models as fallback chain)
+    for (const modelName of GEMINI_FALLBACK_MODELS) {
+        if (isCancelledRef.current) return;
+        
+        try {
+            console.log(`Attempting to generate with Google model: ${modelName}`);
+            
+            const stream = await ai.models.generateContentStream({
+                model: modelName,
+                contents: [...historyForModel, { role: 'user', parts: prompt }],
+                config,
+            });
+
+            for await (const chunk of stream) {
+                if (isCancelledRef.current) break;
+                const text = safeGetText(chunk);
+                if (text) onChunk(text, chunk); // Passing both text and original chunk
+            }
+            return; // Success!
+
+        } catch (error: any) {
+            console.warn(`Google Model ${modelName} failed.`, error);
+            lastError = error;
+            // Continue to the next Google model
+        }
+    }
+
+    // B. Try Perplexity Fallback if all Google models fail
+    if (isCancelledRef.current) return;
+    try {
+        // Convert history for Perplexity (OpenAI format)
+        const perplexityMessages = [
+            { role: 'system', content: systemInstruction },
+            ...history.map(msg => ({
+                role: msg.role === 'ai' ? 'assistant' : 'user',
+                content: msg.parts.map(p => 'text' in p ? p.text : '').join('') 
+            })),
+            { role: 'user', content: prompt.map(p => 'text' in p ? p.text : '').join('') }
+        ];
+
+        // The onChunk for Perplexity only accepts text, so we call it with just text.
+        await callPerplexityFallback(perplexityMessages, (text) => onChunk(text), isCancelledRef);
+        return; // Success!
+
+    } catch (perplexityError: any) {
+        console.error("Perplexity fallback also failed.", perplexityError);
+        lastError = perplexityError;
+    }
+
+    // 5. Final Output: If absolutely everything fails
+    throw new Error(`Failed to get response from any AI provider (Google & Perplexity failed). Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 };
 
 const getSummarizationPrompt = (language: Language): string => {
@@ -178,11 +333,14 @@ export const summarizeFileStream = async (
 
         for await (const chunk of stream) {
             if (isCancelledRef.current) break;
-            onChunk(chunk.text);
+            const text = safeGetText(chunk);
+            if (text) {
+                onChunk(text);
+            }
         }
     } catch (error) {
         console.error("Summarization pipeline failed:", error);
-        throw error; // Re-throw to be caught by the UI
+        throw error; 
     } finally {
         if (uploadedFile) {
             ai.files.delete({ name: uploadedFile.name }).catch(err => console.error(`Failed to clean up file ${uploadedFile?.name}:`, err));
@@ -207,7 +365,7 @@ export const generateTitle = async (ai: GoogleGenAI, content: string): Promise<s
         });
         
         // Clean up the title - remove quotes and trim whitespace
-        return response.text.replace(/["'*]/g, '').trim();
+        return safeGetText(response).replace(/["'*]/g, '').trim();
     }).catch((error) => {
         console.error("Title generation failed after retries:", error);
         // Fallback title if all retries fail
@@ -322,5 +480,50 @@ export const generateVideoFromPrompt = async (
             errorMessage = "The API key lacks permissions for the Veo API. Please enable the 'Vertex AI API' in your Google Cloud project.";
         }
         throw new Error(errorMessage);
+    }
+};
+
+/**
+ * Implements the requested function for strict, streaming chat response.
+ * This function uses the STRICT_LATEX_SYSTEM_INSTRUCTION and a simple streaming API call.
+ * @param prompt The user's text prompt.
+ * @param onToken A callback function to be called with each incoming text token.
+ * @returns A promise that resolves with the final, complete response string.
+ */
+export const streamChatResponse = async (
+    prompt: string,
+    onToken: (token: string) => void
+): Promise<string> => {
+    let finalResponse = '';
+    
+    // Check for API Key and initialize AI instance
+    if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set.");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    try {
+        // 1. Configure the API call to enable streaming
+        const stream = await ai.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                // Use the strict prompt to ensure math formatting
+                systemInstruction: STRICT_LATEX_SYSTEM_INSTRUCTION,
+            },
+        });
+
+        for await (const chunk of stream) {
+            const token = safeGetText(chunk);
+            if (token) {
+                // 2. Use the provided onToken callback
+                onToken(token);
+                // 3. Collect all chunks
+                finalResponse += token;
+            }
+        }
+        
+        return finalResponse; // 3. Return the final, complete response string
+    } catch (error) {
+        console.error("Streaming chat response failed:", error);
+        throw new Error(`Failed to get response from AI. Details: ${error instanceof Error ? error.message : String(error)}`);
     }
 };

@@ -163,7 +163,9 @@ const App: React.FC = () => {
   const filteredHistory = generalChatHistory.filter(session => session.mode === activeSection);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-200 font-sans flex">
+    // UPDATED: Changed min-h-screen to h-screen and added overflow-hidden
+    // This locks the page height to the window, forcing inner elements to scroll.
+    <div className="h-screen overflow-hidden bg-slate-900 text-slate-200 font-sans flex">
       <HistorySidebar 
         generalChatHistory={filteredHistory}
         onSelectChatSession={handleSelectChatSession}
